@@ -14,7 +14,7 @@ async function main() {
   const buffer = fs.readFileSync(docxPath);
   
   console.log("Parsing document...");
-  const result = await parseDocument(buffer);
+  const result = await parseDocument(buffer, docxPath);
   
   // Generate HTML preview
   let html = `<!DOCTYPE html>
@@ -166,6 +166,10 @@ async function main() {
           <div class="stat-value">${result.semantic.filter(b => b.type === "HEADING").length}</div>
           <div class="stat-label">Headings</div>
         </div>
+        <div class="stat">
+          <div class="stat-value">${result.semantic.filter(b => b.pageNumber).length > 0 ? Math.max(...result.semantic.filter(b => b.pageNumber).map(b => b.pageNumber!)) : 'N/A'}</div>
+          <div class="stat-label">Total Pages</div>
+        </div>
       </div>
     </div>
 `;
@@ -189,6 +193,7 @@ async function main() {
         ${idx + 1}. [${block.type}] ${textPreview.split('\n')[0]}
       </div>
       <div class="metadata">
+        ${block.pageNumber ? `<span class="page-number">Page ${block.pageNumber}</span>` : ''}
         ${block.headingLevel ? `<span>Level ${block.headingLevel}</span>` : ''}
         ${block.listLevel !== undefined ? `<span>List Level ${block.listLevel}</span>` : ''}
         ${block.type === "TABLE_TEXT" ? `<span style="background: #ffebee;">applyGrammarRules: ${block.applyGrammarRules !== undefined ? block.applyGrammarRules : 'N/A'}</span>` : ''}

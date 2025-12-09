@@ -149,11 +149,104 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
     // Check if this is an observation-style subheading (e.g., "Observation 1: Fire Extinguishers...")
     const isObservationSubheading = /^Observation\s+\d+:\s+[A-Z]/.test(text) && isShort && noEndingPunctuation;
 
-    // If we're in Table of Contents and this is a numbered item, skip heading classification
-    // It will be classified as LIST_ITEM below
+    // If we're in Table of Contents and this is a numbered item, force it to be LIST_ITEM
+    // TOC entries should never be classified as headings, even if they have heading styles
+    // Also check context: if this is a numbered item right after TOC heading, it's likely a TOC entry
+    let isTOCEntry = false;
     if (isInTableOfContents && isNumberedSectionHeader) {
-      // Skip heading classification, fall through to list item detection
-    } else {
+      isTOCEntry = true;
+    } else if (isNumberedSectionHeader) {
+      // Check if this is likely a TOC entry by looking at context
+      const currentIndex = blocks.indexOf(block);
+      
+      // Look back to find "Table of Contents" heading
+      let foundTOCHeading = false;
+      let tocHeadingIndex = -1;
+      let foundRealSectionBefore = false;
+      
+      for (let i = currentIndex - 1; i >= Math.max(0, currentIndex - 20); i--) {
+        const prevBlock = blocks[i];
+        if (prevBlock.type === "paragraph") {
+          const prevText = prevBlock.text?.trim() || "";
+          if (prevText.toLowerCase() === "table of contents") {
+            foundTOCHeading = true;
+            tocHeadingIndex = i;
+            break;
+          }
+          // If we find a real section heading (with substantial content), we've passed TOC
+          if (/^\d+\.\s+[A-Z]/.test(prevText) && prevText.length < 50) {
+            if (i + 1 < blocks.length) {
+              const nextToPrev = blocks[i + 1];
+              if (nextToPrev.type === "paragraph") {
+                const nextToPrevText = nextToPrev.text?.trim() || "";
+                if (nextToPrevText.length > 50 && !/^\d+\.\s+[A-Z]/.test(nextToPrevText)) {
+                  foundRealSectionBefore = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Look ahead to see if there's a real section coming
+      let foundRealSectionAhead = false;
+      for (let i = currentIndex + 1; i < Math.min(blocks.length, currentIndex + 10); i++) {
+        const futureBlock = blocks[i];
+        if (futureBlock.type === "paragraph") {
+          const futureText = futureBlock.text?.trim() || "";
+          // Check if this is a numbered heading followed by substantial content
+          if (/^\d+\.\s+[A-Z]/.test(futureText) && futureText.length < 50) {
+            if (i + 1 < blocks.length) {
+              const afterFuture = blocks[i + 1];
+              if (afterFuture.type === "paragraph") {
+                const afterFutureText = afterFuture.text?.trim() || "";
+                if (afterFutureText.length > 50 && !/^\d+\.\s+[A-Z]/.test(afterFutureText)) {
+                  foundRealSectionAhead = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Check if next block is a substantial paragraph (indicates real section)
+      let nextBlockIsSubstantial = false;
+      if (currentIndex + 1 < blocks.length) {
+        const nextBlock = blocks[currentIndex + 1];
+        if (nextBlock.type === "paragraph") {
+          const nextText = nextBlock.text?.trim() || "";
+          if (nextText.length > 50 && !/^\d+\.\s+[A-Z]/.test(nextText)) {
+            nextBlockIsSubstantial = true;
+          }
+        }
+      }
+      
+      // If we found TOC heading and haven't found a real section before, and next block isn't substantial,
+      // and either we're close to TOC or real section is ahead, it's a TOC entry
+      if (foundTOCHeading && !foundRealSectionBefore && !nextBlockIsSubstantial) {
+        const distanceFromTOC = currentIndex - tocHeadingIndex;
+        if (foundRealSectionAhead || distanceFromTOC < 15) {
+          isTOCEntry = true;
+          isInTableOfContents = true;
+        }
+      }
+    }
+    
+    if (isTOCEntry) {
+      // Force classification as LIST_ITEM for TOC entries
+      result.push({
+        type: "LIST_ITEM",
+        text,
+        raw: block,
+        listLevel: 0,
+      });
+      continue; // Skip heading classification entirely
+    }
+    
+    // Calculate heading score for non-TOC items
+    {
       const headingScore =
         (hasHeadingStyle ? 5 : 0) +
         (isBold ? 2 : 0) +
@@ -189,9 +282,35 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
           headingLevel = 2;
         }
 
-        // If we encounter a heading that's not "Table of Contents", we've left the TOC section
+        // If we encounter a heading that's not "Table of Contents", check if we've left TOC
+        // Only reset TOC flag if this heading has substantial content following it (real section)
+        // TOC entries are short and don't have paragraphs following them immediately
+        // BUT: If this is a numbered item and we're in TOC, it's likely a TOC entry, not a real section
         if (isInTableOfContents && text.toLowerCase() !== "table of contents") {
-          isInTableOfContents = false;
+          // If it's a numbered item, it's likely a TOC entry - don't reset flag yet
+          if (isNumberedSectionHeader) {
+            // This is a TOC entry - keep the flag set, don't reset
+            // The check at line 154 should have caught this, but if it didn't, we still don't want to reset the flag
+          } else {
+            // Check if next block is a substantial paragraph (indicates real section, not TOC entry)
+            let isRealSection = false;
+            const nextBlockIndex = blocks.indexOf(block) + 1;
+            if (nextBlockIndex < blocks.length) {
+              const nextBlock = blocks[nextBlockIndex];
+              if (nextBlock.type === "paragraph") {
+                const nextText = nextBlock.text?.trim() || "";
+                // If next block is a substantial paragraph (not another numbered item), it's a real section
+                if (nextText.length > 50 && !/^\d+\.\s+[A-Z]/.test(nextText)) {
+                  isRealSection = true;
+                }
+              }
+            }
+            
+            // Only reset TOC flag if this is a real section heading
+            if (isRealSection) {
+              isInTableOfContents = false;
+            }
+          }
         }
         
         result.push({

@@ -33,5 +33,6 @@ export interface SemanticBlock {
   applySpellingRules?: boolean;
   applyCapitalizationRules?: boolean;
   section?: string; // Current section name (inherited from parent heading)
+  pageNumber?: number; // Page number where this block appears
 }
 

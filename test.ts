@@ -3,7 +3,7 @@ import * as path from "path";
 import { parseDocument } from "./parser";
 
 async function main() {
-  const docxPath = path.join(__dirname, "Fire_Hazard_Audit_Report_Enhanced.docx");
+  const docxPath = path.join(__dirname, "Healthcare_Audit_Report.docx");
   
   if (!fs.existsSync(docxPath)) {
     console.error(`File not found: ${docxPath}`);
@@ -14,7 +14,7 @@ async function main() {
   const buffer = fs.readFileSync(docxPath);
   
   console.log("Parsing document...");
-  const result = await parseDocument(buffer);
+  const result = await parseDocument(buffer, docxPath);
   
   console.log(`\n=== PARSING RESULTS ===\n`);
   console.log(`Total blocks extracted: ${result.blocks.length}`);
@@ -46,6 +46,9 @@ async function main() {
     }
     if (block.listLevel !== undefined) {
       details = ` (List Level ${block.listLevel})`;
+    }
+    if (block.pageNumber !== undefined) {
+      details += ` [Page ${block.pageNumber}]`;
     }
     
     let output = `${String(idx + 1).padStart(3, " ")}. [${block.type.padEnd(12, " ")}]${details} ${textPreview}`;
