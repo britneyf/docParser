@@ -3,10 +3,13 @@ import * as path from "path";
 import { parseDocument } from "./parser";
 
 async function main() {
-  const docxPath = path.join(__dirname, "Fire_Hazard_Audit_Report_Enhanced.docx");
+  // Allow command line argument for file path, or use default
+  const fileName = process.argv[2] || "Healthcare_Audit_Report.docx";
+  const docxPath = path.join(__dirname, fileName);
   
   if (!fs.existsSync(docxPath)) {
     console.error(`File not found: ${docxPath}`);
+    console.error(`Please provide a valid DOCX file path as an argument, or place the file in the project root.`);
     process.exit(1);
   }
 

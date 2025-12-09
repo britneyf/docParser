@@ -142,8 +142,10 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
     const isVeryShort = text.length < 30;
     const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(text);
     
-    // Check if this looks like a document title (all caps, short, no punctuation)
-    const isDocumentTitle = isAllCaps && isShort && noEndingPunctuation && text.length > 5;
+    // Check if this looks like a document title (all caps OR title case, short, no punctuation)
+    // Title case document titles are common (e.g., "Healthcare Facility Operational Audit Report")
+    const isTitleCaseDocumentTitle = isTitleCase && isShort && noEndingPunctuation && text.length > 10 && text.length < 100;
+    const isDocumentTitle = (isAllCaps && isShort && noEndingPunctuation && text.length > 5) || isTitleCaseDocumentTitle;
     
     // Check if this is a numbered section header (e.g., "1. Executive Summary")
     // Numbered items that are short, title case, and have heading characteristics should be headings
@@ -263,17 +265,20 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
         (maxFontSize >= 16 ? 2 : 0) +
         (isAllCaps && isShort ? 3 : 0) + // Increased weight for all-caps
         (isTitleCase && isVeryShort ? 2 : 0) +
+        (isTitleCase && isShort && !isVeryShort ? 1 : 0) + // Title case but longer (like document titles)
         (isTitleCaseAfterNumber && isNumberedSectionHeader ? 2 : 0) + // Title case after number
         (noEndingPunctuation && isShort ? 1 : 0) +
-        (isDocumentTitle ? 2 : 0) + // Bonus for document title pattern
+        (isDocumentTitle ? 3 : 0) + // Increased bonus for document title pattern (all caps or title case)
         (isNumberedSectionHeader ? 3 : 0) + // Bonus for numbered section headers
         (isObservationSubheading ? 4 : 0); // Bonus for observation-style subheadings
 
       // Lower threshold for document titles, numbered section headers, observation subheadings, or if score is high enough
       // For numbered section headers with title case text, lower threshold to 5
       // For observation subheadings, lower threshold to 5
+      // For title case document titles, lower threshold to 4
       if (headingScore >= 6 || 
           (isDocumentTitle && headingScore >= 4) || 
+          (isTitleCaseDocumentTitle && headingScore >= 3) || // Even lower threshold for title case document titles
           (isNumberedSectionHeader && isTitleCaseAfterNumber && headingScore >= 5) ||
           (isObservationSubheading && headingScore >= 5)) {
         // Determine heading level from style name or pattern

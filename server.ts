@@ -105,6 +105,14 @@ export const BAD_PHRASE_PATTERNS: { pattern: RegExp; replacement: string | ((sub
     { pattern: /\bstudy\b/gi, replacement: "review" },
 ];
 
+// Currency patterns for format checking
+const CURRENCY_PATTERNS = [
+    { regex: /\$/g, code: "USD" },
+    { regex: /₦/g, code: "Naira" },
+    { regex: /£/g, code: "GBP" },
+    { regex: /\bFr\.?\b/g, code: "CHF" }
+];
+
 // Month abbreviations mapping
 const MONTH_ABBREVIATIONS: Record<string, string> = {
     "Jan": "January",
@@ -171,6 +179,27 @@ app.post('/api/quality-check', upload.single('document'), async (req: Request, r
 
         // Parse the document
         const result = await parseDocument(buffer, filePath);
+        
+        // Debug: Log section detection
+        console.log('\n=== Section Detection Debug ===');
+        const sectionMap = new Map<string, number>();
+        result.semantic.forEach((block: any, index: number) => {
+            const section = getSectionName(result.semantic, index);
+            if (!sectionMap.has(section)) {
+                sectionMap.set(section, 0);
+            }
+            sectionMap.set(section, sectionMap.get(section)! + 1);
+        });
+        console.log('Detected sections:', Array.from(sectionMap.entries()).map(([name, count]) => `${name} (${count} blocks)`).join(', '));
+        
+        // Debug: Log page numbers
+        console.log('\n=== Page Number Debug ===');
+        const pageMap = new Map<number, number>();
+        result.semantic.forEach((block: any) => {
+            const page = block.pageNumber || 0;
+            pageMap.set(page, (pageMap.get(page) || 0) + 1);
+        });
+        console.log('Page distribution:', Array.from(pageMap.entries()).sort((a, b) => a[0] - b[0]).map(([page, count]) => `Page ${page}: ${count} blocks`).join(', '));
 
         // TODO: Run quality checks based on rules
         // For now, return mock results
@@ -753,6 +782,385 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
     const dateIssuesFoundCount = results.length - dateIssuesBefore;
     console.log(`Rule 5: Checked ${dateChecks} blocks, found ${dateIssuesFoundCount} date format issues`);
 
+    // Rule 6: Number format checking (UK English conventions)
+    console.log('\n=== Rule 6: Number Format Checking ===');
+    const numberIssuesBefore = results.length;
+    let numberChecks = 0;
+    let numberIssuesFound = 0;
+    
+    // Pattern to match numbers with k/m suffix (these are always candidates for formatting)
+    const suffixNumberPattern = /\b\d[\d,. ]*(k|m)\b/gi;
+    
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+
+        // Only apply to content blocks
+        if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+            continue;
+        }
+
+        const text = block.text;
+        if (!text) continue;
+
+        numberChecks++;
+        
+        let recommendedText = text;
+        const foundIssues: Array<{ original: string; recommended: string; reason: string }> = [];
+        
+        // Check numbers with k/m suffix (these are always candidates)
+        const suffixMatches = Array.from(text.matchAll(suffixNumberPattern)) as RegExpMatchArray[];
+        
+        for (const match of suffixMatches) {
+            const token = match[0];
+            const matchIndex = match.index || 0;
+            
+            // Check context: don't match if it's part of a date
+            const beforeContext = text.substring(Math.max(0, matchIndex - 20), matchIndex);
+            const afterContext = text.substring(matchIndex + token.length, Math.min(text.length, matchIndex + token.length + 20));
+            
+            // Skip if it looks like part of a date (month name before, or year after)
+            if (/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s*$/i.test(beforeContext) ||
+                /^\s*\d{4}/.test(afterContext)) {
+                continue; // Skip dates
+            }
+            
+            // Skip if followed by words (e.g., "30–60 days", "12 Months")
+            if (/^\s*[–-]\s*\d+/.test(afterContext) || /^\s*[a-zA-Z]/.test(afterContext)) {
+                continue; // Skip ranges and numbers followed by words
+            }
+            
+            const suffix = token.toLowerCase().endsWith("k") || token.toLowerCase().endsWith("m") 
+                ? token.slice(-1).toLowerCase() 
+                : null;
+            const core = suffix ? token.slice(0, -1) : token;
+                
+            let isValid = true;
+            let reason = "";
+            let recommended = token;
+                
+            // Rule: no spaces allowed inside numbers
+            if (core.includes(" ")) {
+                isValid = false;
+                reason = "Spaces are not allowed inside numbers.";
+                const cleaned = core.replace(/\s+/g, "");
+                recommended = cleaned + (suffix || "");
+            }
+                
+            // Suffix k (no decimals, no commas, must be integer)
+            if (suffix === "k" && isValid) {
+                if (core.includes(".") || core.includes(",")) {
+                    isValid = false;
+                    reason = "Numbers ending in k must not contain decimals or commas.";
+                    recommended = core.replace(/[.,]/g, "") + "k";
+                }
+            }
+                
+            // Suffix m (decimals allowed only with dot and no comma)
+            if (suffix === "m" && isValid) {
+                const hasComma = core.includes(",");
+                const hasDot = core.includes(".");
+                    
+                if (hasComma && hasDot) {
+                    isValid = false;
+                    reason = "Numbers ending in m cannot mix comma and dot.";
+                    recommended = core.replace(/,/g, "") + "m";
+                } else if (hasComma) {
+                    // Check if comma is used as decimal separator (e.g., "5,34m")
+                    const parts = core.split(",");
+                    if (parts.length === 2 && parts[1].length > 0 && parts[1].length <= 2) {
+                        isValid = false;
+                        reason = "Numbers ending in m must use dot for decimals, not comma.";
+                        recommended = core.replace(",", ".") + "m";
+                    } else if (hasComma) {
+                        // Comma used as thousand separator - remove it
+                        isValid = false;
+                        reason = "Numbers ending in m should not use commas as thousand separators.";
+                        recommended = core.replace(/,/g, "") + "m";
+                    }
+                }
+            }
+                
+            if (!isValid) {
+                foundIssues.push({ original: token, recommended, reason });
+                // Replace using word boundary to avoid partial matches
+                const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                recommendedText = recommendedText.replace(new RegExp(`\\b${escapedToken}\\b`, 'g'), recommended);
+            }
+        }
+        
+        // Only create result if we found issues and the text changed
+        if (foundIssues.length > 0 && recommendedText !== text) {
+            const issueList = foundIssues.map(f => `"${f.original}"`).join(", ");
+            const reasonList = foundIssues.map(f => f.reason).filter((v, i, a) => a.indexOf(v) === i).join("; ");
+                
+            console.log(`  Found ${foundIssues.length} number format issue(s) in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${issueList}`);
+                
+            const section = getSectionName(parseResult.semantic, i);
+            results.push({
+                id: `number-format-${i}-${Date.now()}`,
+                page: block.pageNumber || 1,
+                section: section,
+                category: "formatting",
+                severity: "medium",
+                confidence: 0.95,
+                originalText: text,
+                recommendedText: recommendedText,
+                rationale: `Number format issues: ${reasonList}.`
+            });
+            numberIssuesFound++;
+        }
+    }
+    const numberIssuesFoundCount = results.length - numberIssuesBefore;
+    console.log(`Rule 6: Checked ${numberChecks} blocks, found ${numberIssuesFoundCount} number format issues`);
+
+    // Rule 7: Currency format checking
+    console.log('\n=== Rule 7: Currency Format Checking ===');
+    const currencyIssuesBefore = results.length;
+    let currencyChecks = 0;
+    let currencyIssuesFound = 0;
+    
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+
+        // Only apply to content blocks
+        if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+            continue;
+        }
+
+        const text = block.text;
+        if (!text) continue;
+
+        currencyChecks++;
+        
+        const foundCurrencies: Array<{ symbol: string; code: string; matches: number }> = [];
+        
+        // Check for each currency pattern
+        for (const pattern of CURRENCY_PATTERNS) {
+            const matches = text.match(pattern.regex);
+            if (matches && matches.length > 0) {
+                foundCurrencies.push({
+                    symbol: pattern.regex.source,
+                    code: pattern.code,
+                    matches: matches.length
+                });
+            }
+        }
+        
+        // If multiple currencies found in same block, flag as inconsistency
+        if (foundCurrencies.length > 1) {
+            const currencyList = foundCurrencies.map(f => `${f.code} (${f.matches} occurrence${f.matches > 1 ? 's' : ''})`).join(", ");
+            
+            console.log(`  Found multiple currencies in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${currencyList}`);
+            
+            const section = getSectionName(parseResult.semantic, i);
+            results.push({
+                id: `currency-format-${i}-${Date.now()}`,
+                page: block.pageNumber || 1,
+                section: section,
+                category: "formatting",
+                severity: "low",
+                confidence: 0.9,
+                originalText: text,
+                recommendedText: text, // No automatic fix - user should review
+                rationale: `Multiple currency symbols found in same block: ${currencyList}. Ensure currency consistency throughout the document.`
+            });
+            currencyIssuesFound++;
+        }
+    }
+    const currencyIssuesFoundCount = results.length - currencyIssuesBefore;
+    console.log(`Rule 7: Checked ${currencyChecks} blocks, found ${currencyIssuesFoundCount} currency format issues`);
+
+    // Rule 8: UK English Spell Checking (Observations only)
+    console.log('\n=== Rule 8: UK English Spell Checking ===');
+    const spellIssuesBefore = results.length;
+    let spellChecks = 0;
+    let spellIssuesFound = 0;
+    
+    try {
+        // Import spell checker (dynamic import to handle optional dependency)
+        const nspell = require('nspell');
+        const dictionary = require('dictionary-en-gb');
+        
+        // Initialize UK English dictionary
+        const dict = nspell(dictionary);
+        
+        // Custom words to add to dictionary
+        const ADDITIONAL_WORDS = ["Pespi-Co", "reputational", "kCal", "megajoule"];
+        ADDITIONAL_WORDS.forEach(w => dict.add(w));
+        
+        // Name suffixes for heuristic detection
+        const NAME_SUFFIXES = [
+            "son", "sen", "ez", "ski", "ska", "ova", "mann", "berg", "stein", "ford", "wood", "kin", "ley", "ton"
+        ];
+        
+        // Helper functions for exclusions
+        function isNameLike(word: string): boolean {
+            if (!/^[A-Z][a-z]+$/.test(word)) return false;
+            return NAME_SUFFIXES.some(suf => word.toLowerCase().endsWith(suf));
+        }
+        
+        function isSlashTwoWords(token: string): boolean {
+            if (!token.includes("/")) return false;
+            const parts = token.split("/");
+            if (parts.length !== 2) return false;
+            return dict.correct(parts[0]) && dict.correct(parts[1]);
+        }
+        
+        function isMeasurement(word: string): boolean {
+            return /^\d+(ml|l|kg|g|mg|cm|mm|km)$/i.test(word);
+        }
+        
+        function isAbbreviation(word: string): boolean {
+            return /^[A-Z]+$/.test(word);
+        }
+        
+        function isPluralAbbrev(word: string): boolean {
+            return /^[A-Z]+s$/.test(word);
+        }
+        
+        function isNumberKM(word: string): boolean {
+            return /^\d+(\.\d+)?[km]$/i.test(word);
+        }
+        
+        function isEGIE(word: string): boolean {
+            return /^(e\.?g\.?|i\.?e\.?)$/i.test(word);
+        }
+        
+        for (let i = 0; i < parseResult.semantic.length; i++) {
+            const block = parseResult.semantic[i];
+
+            // Only apply to content blocks
+            if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+                continue;
+            }
+
+            // Only apply to Observations section
+            const section = getSectionName(parseResult.semantic, i).toLowerCase();
+            if (section !== "observations") {
+                continue;
+            }
+
+            const text = block.text;
+            if (!text) continue;
+
+            spellChecks++;
+            
+            // Split text into words (preserve punctuation for context)
+            const words = text.split(/\s+/);
+            const foundSpellingErrors: Array<{ word: string; suggestion: string | null }> = [];
+
+            for (const rawWord of words) {
+                // Strip punctuation for checking, but keep original for context
+                const word = rawWord.replace(/[^A-Za-z0-9\/\.]/g, "");
+
+                if (!word) continue;
+
+                // Apply exclusions
+                if (isAbbreviation(word)) continue;
+                if (isPluralAbbrev(word)) continue;
+                if (isNumberKM(word)) continue;
+                if (isSlashTwoWords(word)) continue;
+                if (isNameLike(word)) continue;
+                if (isMeasurement(word)) continue;
+                if (isEGIE(word)) continue;
+                if (/^\d+$/.test(word)) continue; // Pure numbers
+
+                // Main spell-check
+                if (!dict.correct(word)) {
+                    const suggestions = dict.suggest(word);
+                    const recommended = suggestions.length > 0 ? suggestions[0] : null;
+                    
+                    foundSpellingErrors.push({ word: rawWord, suggestion: recommended });
+                }
+            }
+            
+            // Create result for each spelling error found
+            if (foundSpellingErrors.length > 0) {
+                for (const error of foundSpellingErrors) {
+                    const sectionName = getSectionName(parseResult.semantic, i);
+                    results.push({
+                        id: `uk-spellcheck-${i}-${error.word}-${Date.now()}`,
+                        page: block.pageNumber || 1,
+                        section: sectionName,
+                        category: "formatting",
+                        severity: "medium",
+                        confidence: 0.9,
+                        originalText: error.word,
+                        recommendedText: error.suggestion || "No suggestion provided.",
+                        rationale: error.suggestion 
+                            ? `Word "${error.word}" is not recognized by UK English dictionary. Suggested: "${error.suggestion}".`
+                            : `Word "${error.word}" is not recognized by UK English dictionary.`
+                    });
+                    spellIssuesFound++;
+                }
+            }
+        }
+        
+        const spellIssuesFoundCount = results.length - spellIssuesBefore;
+        console.log(`Rule 8: Checked ${spellChecks} blocks in Observations section, found ${spellIssuesFoundCount} spelling issues`);
+    } catch (error) {
+        console.warn(`Rule 8: Spell checking not available (${error}). Skipping spell check.`);
+        console.log(`Rule 8: Spell checking library not installed. Run: npm install nspell dictionary-en-gb`);
+    }
+
+    // Rule 9: Double/Triple Spaces Detection
+    console.log('\n=== Rule 9: Double/Triple Spaces Detection ===');
+    const spaceIssuesBefore = results.length;
+    let spaceChecks = 0;
+    let spaceIssuesFound = 0;
+    
+    // Pattern to match 2 or more consecutive spaces
+    const multipleSpacesPattern = / {2,}/g;
+    
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+
+        // Only apply to content blocks
+        if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+            continue;
+        }
+
+        const text = block.text;
+        if (!text) continue;
+
+        spaceChecks++;
+        
+        // Find all instances of multiple spaces
+        const matches = Array.from(text.matchAll(multipleSpacesPattern)) as RegExpMatchArray[];
+        
+        if (matches.length > 0) {
+            // Replace all multiple spaces with single space
+            const recommendedText = text.replace(multipleSpacesPattern, ' ');
+            
+            // Only create result if the text actually changed
+            if (recommendedText !== text) {
+                const spaceCounts = matches.map(m => {
+                    const spaceCount = m[0].length;
+                    return spaceCount === 2 ? 'double' : spaceCount === 3 ? 'triple' : `${spaceCount} consecutive`;
+                });
+                const uniqueCounts = [...new Set(spaceCounts)];
+                
+                console.log(`  Found ${matches.length} multiple space(s) in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${uniqueCounts.join(', ')} spaces`);
+                
+                const section = getSectionName(parseResult.semantic, i);
+                results.push({
+                    id: `multiple-spaces-${i}-${Date.now()}`,
+                    page: block.pageNumber || 1,
+                    section: section,
+                    category: "formatting",
+                    severity: "low",
+                    confidence: 0.95,
+                    originalText: text,
+                    recommendedText: recommendedText,
+                    rationale: `Found ${matches.length} instance(s) of ${uniqueCounts.join(', ')} space(s). Replace with single space.`
+                });
+                spaceIssuesFound++;
+            }
+        }
+    }
+    const spaceIssuesFoundCount = results.length - spaceIssuesBefore;
+    console.log(`Rule 9: Checked ${spaceChecks} blocks, found ${spaceIssuesFoundCount} multiple space issues`);
+
     console.log(`\n=== Total Quality Check Results: ${results.length} issues found ===`);
     
     // Print all issues for verification
@@ -775,11 +1183,14 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
 }
 
 function getSectionName(semanticBlocks: any[], currentIndex: number): string {
-    // First, try to find an explicit HEADING or SUBHEADING
+    // First, try to find an explicit HEADING or SUBHEADING (most reliable)
     for (let i = currentIndex - 1; i >= 0; i--) {
         const block = semanticBlocks[i];
         if (block.type === 'HEADING' || block.type === 'SUBHEADING') {
-            return block.text;
+            const headingText = block.text?.trim() || '';
+            if (headingText && headingText.length > 0) {
+                return headingText;
+            }
         }
     }
     
@@ -789,30 +1200,48 @@ function getSectionName(semanticBlocks: any[], currentIndex: number): string {
         const block = semanticBlocks[i];
         if (block.type === 'PARAGRAPH') {
             const text = block.text?.trim() || '';
+            if (!text || text.length < 3) continue;
             
             // Check if this looks like a heading:
-            // 1. Numbered section header (e.g., "1. Executive Summary")
-            // 2. Short text (likely a heading)
-            // 3. Title case or all caps
-            // 4. No ending punctuation
-            const isNumberedHeader = /^\d+\.\s+[A-Z]/.test(text);
-            const isShort = text.length < 80 && text.length > 0;
-            const isAllCaps = text === text.toUpperCase() && text.length < 80;
-            const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(text);
-            const noEndingPunctuation = !/[.!?]$/.test(text);
+            // 1. Numbered section header (e.g., "1. Executive Summary", "1.1 Introduction")
+            const isNumberedHeader = /^\d+(\.\d+)*\.\s+[A-Z]/.test(text);
             
-            // Check if it's an observation-style heading
+            // 2. Observation-style heading
             const isObservationHeading = /^Observation\s+\d+:\s+[A-Z]/.test(text);
             
+            // 3. Short text with title case or all caps (likely a heading)
+            const isShort = text.length < 100 && text.length > 0;
+            const isAllCaps = text === text.toUpperCase() && text.length < 100 && text.length > 2;
+            const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*(\s+[A-Z][a-z]+)*$/.test(text);
+            const noEndingPunctuation = !/[.!?]$/.test(text);
+            
+            // 4. Check if it's a common section header pattern
+            const commonSectionPatterns = [
+                /^(Executive\s+)?Summary/i,
+                /^Introduction/i,
+                /^Background/i,
+                /^Methodology/i,
+                /^Findings/i,
+                /^Observations?/i,
+                /^Recommendations?/i,
+                /^Conclusion/i,
+                /^Appendix/i,
+                /^References?/i
+            ];
+            const matchesCommonPattern = commonSectionPatterns.some(pattern => pattern.test(text));
+            
             // If it matches heading characteristics, treat it as a heading
-            if ((isNumberedHeader || isObservationHeading || (isShort && (isAllCaps || isTitleCase) && noEndingPunctuation)) && 
-                text.length > 3) {
+            if ((isNumberedHeader || isObservationHeading || matchesCommonPattern || 
+                 (isShort && (isAllCaps || isTitleCase) && noEndingPunctuation)) && 
+                text.length > 2) {
                 return text;
             }
         }
     }
     
-    return 'Introduction';
+    // Last resort: return "Unknown" instead of a generic name
+    // This helps identify when section detection is failing
+    return 'Unknown Section';
 }
 
 async function applyChangesToDocument(buffer: Buffer, changes: any[]): Promise<Buffer> {
