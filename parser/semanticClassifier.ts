@@ -10,6 +10,10 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
       // For quality audit checking, we need all cells accessible
       let rowIndex = 0;
       let totalCells = 0;
+      let cellsWithText = 0;
+      let cellsWithoutText = 0;
+      
+      console.log(`[semanticClassifier] Processing table with ${block.rows.length} rows`);
       
       for (const row of block.rows) {
         const isHeaderRow = rowIndex === 0; // First row is typically headers
@@ -26,23 +30,29 @@ export function classifyBlocks(blocks: DocxBlock[]): SemanticBlock[] {
             cellText = cell.runs.map(r => r.text || "").join("").trim();
           }
           
+          // Debug logging for first few cells
+          if (totalCells <= 5) {
+            console.log(`[semanticClassifier] Cell ${totalCells} (row ${rowIndex}): text="${cell.text?.substring(0, 50) || '(empty)'}", runs=${cell.runs?.length || 0}, extracted="${cellText?.substring(0, 50) || '(empty)'}"`);
+          }
+          
           // For quality checking, extract all non-empty cells
-          // This helps identify content that needs grammar/spelling checks
+          // All quality check rules (jargon, bad words, month abbreviations, etc.) 
+          // already check TABLE_TEXT blocks, so no special flags needed
           if (cellText) {
+            cellsWithText++;
             result.push({
               type: "TABLE_TEXT",
               text: cellText,
               raw: cell as DocxBlock,
-              applyGrammarRules: false,
-              applySpellingRules: true,
-              applyCapitalizationRules: true,
-              // For quality checking: headers should be checked for capitalization
-              // Data cells should be checked for grammar/spelling
             });
+          } else {
+            cellsWithoutText++;
           }
         }
         rowIndex++;
       }
+      
+      console.log(`[semanticClassifier] Table processed: ${rowIndex} rows, ${totalCells} total cells, ${cellsWithText} with text, ${cellsWithoutText} empty`);
       
       // Also add a TABLE marker for the structure itself
       // Include metadata about table size for quality checking

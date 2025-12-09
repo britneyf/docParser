@@ -105,6 +105,21 @@ export const BAD_PHRASE_PATTERNS: { pattern: RegExp; replacement: string | ((sub
     { pattern: /\bstudy\b/gi, replacement: "review" },
 ];
 
+// Month abbreviations mapping
+const MONTH_ABBREVIATIONS: Record<string, string> = {
+    "Jan": "January",
+    "Feb": "February",
+    "Mar": "March",
+    "Apr": "April",
+    "Aug": "August",
+    "Sept": "September",
+    "Oct": "October",
+    "Nov": "November",
+    "Dec": "December"
+};
+
+const ALLOWED_ABBREVIATIONS = new Set(["May", "June", "July"]);
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -423,7 +438,7 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
                 section: getSectionName(parseResult.semantic, blockIndex),
                 confidence: 1.0,
                 severity: 'high',
-                category: 'Format & Style',
+                category: 'formatting',
                 originalText: text,
                 recommendedText: text.toUpperCase(),
                 rationale: 'All text on the first page must be written in uppercase letters. The report title should be fully capitalized.'
@@ -439,6 +454,7 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
     console.log('\n=== Rule 2: Jargon Detection ===');
     console.log(`Checking ${parseResult.semantic.length} semantic blocks...`);
     let jargonChecks = 0;
+    const jargonIssuesBefore = results.length;
     for (let i = 0; i < parseResult.semantic.length; i++) {
         const block = parseResult.semantic[i];
         if (block.type !== "PARAGRAPH" && block.type !== "HEADING" && block.type !== "LIST_ITEM" && block.type !== "TABLE_TEXT") {
@@ -451,54 +467,73 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
         jargonChecks++;
         const lower = text.toLowerCase();
 
-        // Check each jargon phrase in the map
+        // Collect all jargon phrases found in this block
+        const foundJargon: Array<{ jargon: string; simple: string }> = [];
+        let recommendedText = text;
+
+        // Check each jargon phrase in the map and collect all matches
         for (const jargon in JARGON_MAP) {
-            if (lower.includes(jargon)) {
-                console.log(`  Found jargon "${jargon}" in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'})`);
+            // Use word boundaries to avoid partial matches (e.g., "admin" shouldn't match "administration")
+            const escapedJargon = jargon.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // For multi-word phrases, use word boundaries; for single words, require word boundaries
+            const regexPattern = jargon.includes(' ') 
+                ? `\\b${escapedJargon}\\b`  // Multi-word: word boundaries on both sides
+                : `\\b${escapedJargon}\\b`;  // Single word: word boundaries on both sides
+            const regex = new RegExp(regexPattern, 'gi');
+            
+            if (regex.test(text)) {
                 const simple = JARGON_MAP[jargon];
-
-                // Replace all instances (case-insensitive) with the simple term
-                // Use word boundaries to avoid partial matches where possible
-                const regex = new RegExp(jargon.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                const recommendedText = text.replace(regex, simple);
-
-                results.push({
-                    id: `jargon-${i}-${jargon.replace(/\s+/g, '-')}`,
-                    page: block.pageNumber || 1,
-                    section: getSectionName(parseResult.semantic, i),
-                    category: "Content",
-                    severity: "medium",
-                    confidence: 0.95,
-                    originalText: text,
-                    recommendedText: recommendedText,
-                    rationale: `Replace jargon phrase "${jargon}" with simpler term "${simple}".`
-                });
+                foundJargon.push({ jargon, simple });
+                // Apply replacement to build up the recommended text
+                recommendedText = recommendedText.replace(regex, simple);
             }
         }
-    }
-    console.log(`Rule 2: Checked ${jargonChecks} blocks, found ${results.length - (results.length - jargonChecks)} jargon issues`);
 
-    // Rule 3: Bad/vague phrase patterns detection (Observations section only)
-    // Only check paragraphs, list items, and table text in the Observations section
-    console.log('\n=== Rule 3: Bad Words Detection (Observations only) ===');
+        // If we found any jargon, create a single result with all replacements applied
+        if (foundJargon.length > 0) {
+            const jargonList = foundJargon.map(f => `"${f.jargon}"`).join(", ");
+            const simpleList = foundJargon.map(f => `"${f.simple}"`).join(", ");
+            
+            console.log(`  Found ${foundJargon.length} jargon phrase(s) in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${jargonList}`);
+
+            results.push({
+                id: `jargon-${i}-${foundJargon.map(f => f.jargon.replace(/\s+/g, '-')).join('-')}`,
+                page: block.pageNumber || 1,
+                section: getSectionName(parseResult.semantic, i),
+                category: "content",
+                severity: "medium",
+                confidence: 0.95,
+                originalText: text,
+                recommendedText: recommendedText,
+                rationale: `Replace jargon phrase(s) ${jargonList} with simpler term(s) ${simpleList}.`
+            });
+        }
+    }
+    const jargonIssuesFound = results.length - jargonIssuesBefore;
+    console.log(`Rule 2: Checked ${jargonChecks} blocks, found ${jargonIssuesFound} jargon issues`);
+
+    // Rule 3: Bad/vague phrase patterns detection (all content blocks, not headers/subheaders)
+    // Check paragraphs, list items, and table text in all sections
+    console.log('\n=== Rule 3: Bad Words Detection ===');
     let badWordChecks = 0;
-    let observationsBlocks = 0;
+    const badWordIssuesBefore = results.length;
+    
     for (let i = 0; i < parseResult.semantic.length; i++) {
         const block = parseResult.semantic[i];
         
-        // Only check specific block types
+        // Only check content block types (not headers, subheaders, or tables themselves)
         if (block.type !== "PARAGRAPH" && block.type !== "LIST_ITEM" && block.type !== "TABLE_TEXT") {
             continue;
         }
 
         const section = getSectionName(parseResult.semantic, i);
         
-        // Only check blocks in the Observations section
-        if (section.toLowerCase() !== "observations") {
+        // Skip if this block is itself a header or subheader section
+        // (We only want content blocks, not section titles)
+        if (block.type === "HEADING" || block.type === "SUBHEADING") {
             continue;
         }
 
-        observationsBlocks++;
         const text = block.text;
         if (!text) continue;
 
@@ -538,7 +573,7 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
         // Only create a result if we found patterns and the text changed
         if (foundPatterns.length > 0 && recommendedText !== text) {
             const matchedPhrases = foundPatterns.map(p => p.match).filter((v, i, a) => a.indexOf(v) === i);
-            console.log(`  Found bad words in Observations block ${i}: ${matchedPhrases.join(', ')}`);
+            console.log(`  Found bad words in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${matchedPhrases.join(', ')}`);
             
             results.push({
                 id: `badphrase-${i}-${Date.now()}`,
@@ -553,8 +588,188 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
             });
         }
     }
-    console.log(`Rule 3: Found ${observationsBlocks} blocks in Observations section, checked ${badWordChecks} blocks`);
+    const badWordIssuesFound = results.length - badWordIssuesBefore;
+    console.log(`Rule 3: Checked ${badWordChecks} content blocks (excluding headers/subheaders), found ${badWordIssuesFound} issues`);
+
+    // Rule 4: Month abbreviations (all sections)
+    console.log('\n=== Rule 4: Month Abbreviations Detection ===');
+    
+    // First, count how many TABLE_TEXT blocks we have
+    const tableTextBlocks = parseResult.semantic.filter((b: any) => b.type === "TABLE_TEXT");
+    console.log(`Found ${tableTextBlocks.length} TABLE_TEXT blocks in document`);
+    if (tableTextBlocks.length > 0) {
+        console.log(`Sample TABLE_TEXT blocks (first 5):`);
+        tableTextBlocks.slice(0, 5).forEach((block: any, idx: number) => {
+            console.log(`  [${idx}] "${block.text?.substring(0, 60) || '(empty)'}${block.text && block.text.length > 60 ? '...' : ''}" (page ${block.pageNumber || 'unknown'})`);
+        });
+    }
+    
+    let monthChecks = 0;
+    let monthIssuesFound = 0;
+    let tableTextChecks = 0;
+    
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+
+        // Only apply to content blocks
+        if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+            continue;
+        }
+
+        const text = block.text;
+        if (!text) continue;
+
+        monthChecks++;
+        if (block.type === "TABLE_TEXT") {
+            tableTextChecks++;
+        }
+        
+        const section = getSectionName(parseResult.semantic, i);
+
+        // Collect all month abbreviations found in this block
+        const foundAbbreviations: Array<{ abbr: string; full: string; isInDate: boolean }> = [];
+        let recommendedText = text;
+        
+        // Pattern to detect if abbreviation is part of a date (Month Day Year format)
+        const datePattern = /\b(\w+)\s+(\d{1,2})\s+(\d{4})\b/g;
+
+        // Check each forbidden abbreviation and collect all matches
+        for (const abbr in MONTH_ABBREVIATIONS) {
+            const full = MONTH_ABBREVIATIONS[abbr];
+
+            // Word boundary, match exact abbreviation
+            const regex = new RegExp(`\\b${abbr}\\b`, "g");
+            const matches = Array.from(text.matchAll(regex)) as RegExpMatchArray[];
+            
+            if (matches.length > 0) {
+                // Check if this abbreviation is part of a date
+                const isInDate = matches.some((match: RegExpMatchArray) => {
+                    const beforeMatch = text.substring(Math.max(0, (match.index || 0) - 20), match.index || 0);
+                    const afterMatch = text.substring((match.index || 0) + match[0].length, Math.min(text.length, (match.index || 0) + match[0].length + 20));
+                    // Check if followed by " Day Year" pattern
+                    return /\d{1,2}\s+\d{4}/.test(afterMatch.trim());
+                });
+                
+                foundAbbreviations.push({ abbr, full, isInDate });
+                
+                // Apply replacement to build up the recommended text
+                recommendedText = recommendedText.replace(regex, full);
+            }
+        }
+
+        // If we found any abbreviations, create a single result with all replacements applied
+        if (foundAbbreviations.length > 0) {
+            // For dates, also add commas after the day
+            const datesInText = foundAbbreviations.filter(f => f.isInDate);
+            if (datesInText.length > 0) {
+                // Add commas to dates: "Month Day Year" -> "Month Day, Year"
+                const fullMonthNames = "January|February|March|April|May|June|July|August|September|October|November|December";
+                const dateCommaPattern = new RegExp(`\\b(${fullMonthNames})\\s+(\\d{1,2})\\s+(\\d{4})\\b`, "g");
+                recommendedText = recommendedText.replace(dateCommaPattern, '$1 $2, $3');
+            }
+            
+            const abbrList = foundAbbreviations.map(f => `"${f.abbr}"`).join(", ");
+            const fullList = foundAbbreviations.map(f => `"${f.full}"`).join(", ");
+            
+            const dateNote = datesInText.length > 0 ? " (dates also formatted with commas)" : "";
+            
+            console.log(`  Found ${foundAbbreviations.length} month abbreviation(s) in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${abbrList}${dateNote}`);
+
+            results.push({
+                id: `month-abbrev-${i}-${foundAbbreviations.map(f => f.abbr).join('-')}`,
+                page: block.pageNumber || 1,
+                section: section,
+                category: "formatting",
+                severity: "medium",
+                confidence: 0.95,
+                originalText: text,
+                recommendedText: recommendedText,
+                rationale: `The abbreviation(s) ${abbrList} ${foundAbbreviations.length === 1 ? 'is' : 'are'} not permitted. Use ${fullList} instead.${datesInText.length > 0 ? ' Dates formatted with commas.' : ''}`
+            });
+            monthIssuesFound++;
+        }
+
+        // Ignore allowed abbreviations (May, June, July) - no action needed
+    }
+    console.log(`Rule 4: Checked ${monthChecks} blocks (${tableTextChecks} from tables), found ${monthIssuesFound} month abbreviation issues`);
+
+    // Rule 5: Date format - add commas to dates (Month Day Year -> Month Day, Year)
+    console.log('\n=== Rule 5: Date Format Standardization ===');
+    const dateIssuesBefore = results.length;
+    let dateChecks = 0;
+    let dateIssuesFound = 0;
+    
+    // Pattern to match dates in format "Month Day Year" (without comma)
+    // Matches both full month names and abbreviations: January 15 2026, Jan 15 2026, etc.
+    const fullMonthNames = "January|February|March|April|May|June|July|August|September|October|November|December";
+    const monthAbbreviations = Object.keys(MONTH_ABBREVIATIONS).join("|");
+    const datePattern = new RegExp(`\\b(${fullMonthNames}|${monthAbbreviations})\\s+(\\d{1,2})\\s+(\\d{4})\\b`, "g");
+    
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+
+        // Only apply to content blocks
+        if (!["PARAGRAPH", "LIST_ITEM", "TABLE_TEXT"].includes(block.type)) {
+            continue;
+        }
+
+        const text = block.text;
+        if (!text) continue;
+
+        dateChecks++;
+        
+        // Check if text contains dates without commas
+        // Only check for dates with FULL month names (not abbreviations - those are handled by Rule 4)
+        const fullMonthNames = "January|February|March|April|May|June|July|August|September|October|November|December";
+        const fullMonthDatePattern = new RegExp(`\\b(${fullMonthNames})\\s+(\\d{1,2})\\s+(\\d{4})\\b`, "g");
+        const matches = Array.from(text.matchAll(fullMonthDatePattern)) as RegExpMatchArray[];
+        
+        if (matches.length > 0) {
+            // Add commas: "Month Day Year" -> "Month Day, Year"
+            const recommendedText = text.replace(fullMonthDatePattern, '$1 $2, $3');
+            
+            // Only create result if the text actually changed
+            if (recommendedText !== text) {
+                const dateList = matches.map(m => m[0]).filter((v, idx, arr) => arr.indexOf(v) === idx);
+                
+                console.log(`  Found ${matches.length} date(s) without comma in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'}): ${dateList.join(', ')}`);
+                
+                const section = getSectionName(parseResult.semantic, i);
+                results.push({
+                    id: `date-format-${i}-${Date.now()}`,
+                    page: block.pageNumber || 1,
+                    section: section,
+                    category: "formatting",
+                    severity: "low",
+                    confidence: 0.95,
+                    originalText: text,
+                    recommendedText: recommendedText,
+                    rationale: `Add comma(s) to date(s) for standard formatting: ${dateList.map(d => `"${d}" -> "${d.replace(/(\w+)\s+(\d+)\s+(\d+)/, '$1 $2, $3')}"`).join(', ')}.`
+                });
+                dateIssuesFound++;
+            }
+        }
+    }
+    const dateIssuesFoundCount = results.length - dateIssuesBefore;
+    console.log(`Rule 5: Checked ${dateChecks} blocks, found ${dateIssuesFoundCount} date format issues`);
+
     console.log(`\n=== Total Quality Check Results: ${results.length} issues found ===`);
+    
+    // Print all issues for verification
+    console.log('\n=== All Quality Check Issues ===');
+    results.forEach((result, index) => {
+        console.log(`\nIssue ${index + 1}:`);
+        console.log(`  ID: ${result.id}`);
+        console.log(`  Category: ${result.category}`);
+        console.log(`  Severity: ${result.severity}`);
+        console.log(`  Page: ${result.page}`);
+        console.log(`  Section: ${result.section}`);
+        console.log(`  Confidence: ${result.confidence}`);
+        console.log(`  Original: "${result.originalText}"`);
+        console.log(`  Recommended: "${result.recommendedText}"`);
+        console.log(`  Rationale: ${result.rationale}`);
+    });
+    console.log('\n=== End All Issues ===\n');
 
     return results;
 }

@@ -43,7 +43,23 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
 
   function extractParagraph(pNode: any): DocxParagraph {
     const runs: DocxRun[] = [];
-    const rawRuns = pNode["w:r"] ? [].concat(pNode["w:r"]) : [];
+    
+    // With preserveOrder, pNode might be an array or have a different structure
+    // Try to extract w:r runs from the paragraph node
+    let rawRuns: any[] = [];
+    
+    if (Array.isArray(pNode)) {
+      // If pNode is an array, find elements with w:r
+      for (const item of pNode) {
+        if (item && item["w:r"]) {
+          const rItems = Array.isArray(item["w:r"]) ? item["w:r"] : [item["w:r"]];
+          rawRuns.push(...rItems);
+        }
+      }
+    } else if (pNode["w:r"]) {
+      // Standard structure
+      rawRuns = [].concat(pNode["w:r"]);
+    }
     
     for (let runIndex = 0; runIndex < rawRuns.length; runIndex++) {
       const r = rawRuns[runIndex];
@@ -162,9 +178,15 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
   function extractTable(tblNode: any): DocxTable {
     const rows = tblNode["w:tr"] || [];
     const parsedRows: DocxParagraph[][] = [];
+    
+    let tableRowCount = 0;
+    let totalCellsExtracted = 0;
+    let cellsWithText = 0;
+    let cellsWithoutText = 0;
 
     for (const trRaw of [].concat(rows)) {
       const tr: any = trRaw;
+      tableRowCount++;
       // With preserveOrder, tr might be an array of cell objects { "w:tc": {...} }
       let cells: any[] = [];
       if (Array.isArray(tr)) {
@@ -180,6 +202,7 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
 
       for (const tc of cells) {
         if (!tc) continue;
+        totalCellsExtracted++;
         
         // With preserveOrder, tc might be an array of paragraph objects { "w:p": {...} }
         let cellParas: any[] = [];
@@ -199,6 +222,27 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
           let combinedText = "";
           
           for (let i = 0; i < cellParas.length; i++) {
+            // Debug: inspect the paragraph structure for first few cells
+            if (totalCellsExtracted <= 5 && i === 0) {
+              console.log(`[docxExtractor] Cell ${totalCellsExtracted} paragraph structure:`, JSON.stringify(Object.keys(cellParas[i] || {})).substring(0, 200));
+              console.log(`[docxExtractor] Cell ${totalCellsExtracted} is array?`, Array.isArray(cellParas[i]));
+              console.log(`[docxExtractor] Cell ${totalCellsExtracted} has w:r?`, !!(cellParas[i] && cellParas[i]["w:r"]));
+              if (Array.isArray(cellParas[i])) {
+                console.log(`[docxExtractor] Cell ${totalCellsExtracted} array length:`, cellParas[i].length);
+                for (let j = 0; j < Math.min(3, cellParas[i].length); j++) {
+                  console.log(`[docxExtractor] Cell ${totalCellsExtracted} array[${j}] keys:`, JSON.stringify(Object.keys(cellParas[i][j] || {})).substring(0, 200));
+                }
+              }
+              if (cellParas[i] && cellParas[i]["w:r"]) {
+                const runs = [].concat(cellParas[i]["w:r"]);
+                console.log(`[docxExtractor] Cell ${totalCellsExtracted} has ${runs.length} runs`);
+                if (runs.length > 0) {
+                  console.log(`[docxExtractor] Cell ${totalCellsExtracted} first run keys:`, JSON.stringify(Object.keys(runs[0] || {})).substring(0, 200));
+                  console.log(`[docxExtractor] Cell ${totalCellsExtracted} first run has w:t?`, !!runs[0]["w:t"]);
+                }
+              }
+            }
+            
             const para = extractParagraph(cellParas[i]);
             allRuns.push(...para.runs);
             if (para.text) {
@@ -211,6 +255,11 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
             }
           }
           
+          // Debug logging for first few cells
+          if (totalCellsExtracted <= 5) {
+            console.log(`[docxExtractor] Extracted cell ${totalCellsExtracted} (row ${tableRowCount}): ${cellParas.length} paragraphs, text="${combinedText.substring(0, 50) || '(empty)'}${combinedText.length > 50 ? '...' : ''}", runs=${allRuns.length}`);
+          }
+          
           // Create a single cell with combined content (preserving newlines)
           parsedCells.push({
             type: "paragraph",
@@ -218,19 +267,31 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
             text: combinedText, // Don't trim - preserve newlines
             isInTable: true
           });
+          
+          if (combinedText.trim()) {
+            cellsWithText++;
+          } else {
+            cellsWithoutText++;
+          }
         } else {
           // If no paragraphs in cell, create an empty one
+          if (totalCellsExtracted <= 5) {
+            console.log(`[docxExtractor] Extracted cell ${totalCellsExtracted} (row ${tableRowCount}): NO PARAGRAPHS FOUND`);
+          }
           parsedCells.push({
             type: "paragraph",
             runs: [],
             text: "",
             isInTable: true
           });
+          cellsWithoutText++;
         }
       }
 
       parsedRows.push(parsedCells);
     }
+    
+    console.log(`[docxExtractor] Extracted table: ${tableRowCount} rows, ${totalCellsExtracted} cells, ${cellsWithText} with text, ${cellsWithoutText} empty`);
 
     return { type: "table", rows: parsedRows };
   }
