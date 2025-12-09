@@ -17,6 +17,94 @@ export const JARGON_MAP: Record<string, string> = {
     "in order to": "to"
 };
 
+// Bad/vague phrase patterns with replacements for observations
+// Order matters: simpler patterns (single words) should come before complex patterns (phrases with capture groups)
+export const BAD_PHRASE_PATTERNS: { pattern: RegExp; replacement: string | ((substring: string, ...args: any[]) => string) }[] = [
+    // Garbage fillers - remove entirely (process these first before hedges)
+    { pattern: /\bkind of\s+/gi, replacement: "" },
+    { pattern: /\bsort of\s+/gi, replacement: "" },
+    { pattern: /\bjust\s+/gi, replacement: "" },
+    { pattern: /\bonly\s+/gi, replacement: "" },
+    { pattern: /\bbasically\s+/gi, replacement: "" },
+    { pattern: /\bliterally\s+/gi, replacement: "" },
+    { pattern: /\btruly\s+/gi, replacement: "" },
+    { pattern: /\bsurely\s+/gi, replacement: "" },
+    
+    // Hedging adverbs modifying adjectives - remove the hedge, keep the adjective
+    // The captured group should preserve original case, but ensure it's lowercase (adjectives in middle of sentence)
+    { pattern: /\bsomewhat\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\bslightly\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\bquite\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\breally\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\bfairly\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\bpractically\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\ba bit\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    { pattern: /\ba little\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        return word.toLowerCase();
+    }},
+    
+    // Quantifiers - replace with more precise terms
+    // Use function replacement to preserve capitalization
+    { pattern: /\ba handful of\s+([a-zA-Z]+)/gi, replacement: (match, word, offset, string) => {
+        // Check if this is at the start of a sentence (after number or at beginning)
+        const beforeMatch = string.substring(Math.max(0, offset - 10), offset);
+        const isSentenceStart = /^[^a-zA-Z]*$/.test(beforeMatch) || /^\d+\.\s*$/.test(beforeMatch.trim());
+        const quantifier = isSentenceStart ? "Several" : "several";
+        // Keep the noun lowercase (it's a noun, not an adjective)
+        const noun = word.toLowerCase();
+        return quantifier + " " + noun;
+    }},
+    { pattern: /\ba lot of\s+([a-zA-Z]+)/gi, replacement: (match, word, offset, string) => {
+        const beforeMatch = string.substring(Math.max(0, offset - 10), offset);
+        const isSentenceStart = /^[^a-zA-Z]*$/.test(beforeMatch) || /^\d+\.\s*$/.test(beforeMatch.trim());
+        const quantifier = isSentenceStart ? "Many" : "many";
+        const noun = word.toLowerCase();
+        return quantifier + " " + noun;
+    }},
+    { pattern: /\ba number of\s+([a-zA-Z]+)/gi, replacement: (match, word, offset, string) => {
+        const beforeMatch = string.substring(Math.max(0, offset - 10), offset);
+        const isSentenceStart = /^[^a-zA-Z]*$/.test(beforeMatch) || /^\d+\.\s*$/.test(beforeMatch.trim());
+        const quantifier = isSentenceStart ? "Multiple" : "multiple";
+        const noun = word.toLowerCase();
+        return quantifier + " " + noun;
+    }},
+    
+    // Approximations
+    { pattern: /\bclose to\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        // Keep the word lowercase (it's in the middle of a sentence)
+        return "near " + word.toLowerCase();
+    }},
+    { pattern: /\balmost\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        // Preserve original capitalization
+        return "nearly " + word;
+    }},
+    { pattern: /\bnearly\s+([a-zA-Z]+)/gi, replacement: (match, word) => {
+        // Preserve original capitalization
+        return word;
+    }},
+    
+    // Weak verbs
+    { pattern: /\bideate\b/gi, replacement: "think" },
+    { pattern: /\bponder\b/gi, replacement: "consider" },
+    { pattern: /\bthink about\b/gi, replacement: "consider" },
+    { pattern: /\bthink through\b/gi, replacement: "analyze" },
+    { pattern: /\bstudy\b/gi, replacement: "review" },
+];
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -335,7 +423,7 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
                 section: getSectionName(parseResult.semantic, blockIndex),
                 confidence: 1.0,
                 severity: 'high',
-                category: 'formatting',
+                category: 'Format & Style',
                 originalText: text,
                 recommendedText: text.toUpperCase(),
                 rationale: 'All text on the first page must be written in uppercase letters. The report title should be fully capitalized.'
@@ -343,11 +431,14 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
         }
     });
     
-    console.log(`Total issues found: ${results.length}`);
-    console.log('=== End Debug ===');
+    console.log(`Total issues found from Rule 1: ${results.length}`);
+    console.log('=== End Rule 1 Debug ===');
 
     // Rule 2: Jargon / heavy language detection
     // Only check paragraphs, list items, headings, and table text (not tables themselves)
+    console.log('\n=== Rule 2: Jargon Detection ===');
+    console.log(`Checking ${parseResult.semantic.length} semantic blocks...`);
+    let jargonChecks = 0;
     for (let i = 0; i < parseResult.semantic.length; i++) {
         const block = parseResult.semantic[i];
         if (block.type !== "PARAGRAPH" && block.type !== "HEADING" && block.type !== "LIST_ITEM" && block.type !== "TABLE_TEXT") {
@@ -357,11 +448,13 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
         const text = block.text;
         if (!text) continue;
 
+        jargonChecks++;
         const lower = text.toLowerCase();
 
         // Check each jargon phrase in the map
         for (const jargon in JARGON_MAP) {
             if (lower.includes(jargon)) {
+                console.log(`  Found jargon "${jargon}" in block ${i} (${block.type}, page ${block.pageNumber || 'unknown'})`);
                 const simple = JARGON_MAP[jargon];
 
                 // Replace all instances (case-insensitive) with the simple term
@@ -373,7 +466,7 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
                     id: `jargon-${i}-${jargon.replace(/\s+/g, '-')}`,
                     page: block.pageNumber || 1,
                     section: getSectionName(parseResult.semantic, i),
-                    category: "content",
+                    category: "Content",
                     severity: "medium",
                     confidence: 0.95,
                     originalText: text,
@@ -383,17 +476,127 @@ async function runQualityChecks(parseResult: any, reportType: string): Promise<a
             }
         }
     }
+    console.log(`Rule 2: Checked ${jargonChecks} blocks, found ${results.length - (results.length - jargonChecks)} jargon issues`);
+
+    // Rule 3: Bad/vague phrase patterns detection (Observations section only)
+    // Only check paragraphs, list items, and table text in the Observations section
+    console.log('\n=== Rule 3: Bad Words Detection (Observations only) ===');
+    let badWordChecks = 0;
+    let observationsBlocks = 0;
+    for (let i = 0; i < parseResult.semantic.length; i++) {
+        const block = parseResult.semantic[i];
+        
+        // Only check specific block types
+        if (block.type !== "PARAGRAPH" && block.type !== "LIST_ITEM" && block.type !== "TABLE_TEXT") {
+            continue;
+        }
+
+        const section = getSectionName(parseResult.semantic, i);
+        
+        // Only check blocks in the Observations section
+        if (section.toLowerCase() !== "observations") {
+            continue;
+        }
+
+        observationsBlocks++;
+        const text = block.text;
+        if (!text) continue;
+
+        badWordChecks++;
+
+        // Apply each pattern and collect matches
+        let recommendedText = text;
+        const foundPatterns: Array<{ pattern: string; match: string }> = [];
+        
+        for (const { pattern, replacement } of BAD_PHRASE_PATTERNS) {
+            // First, collect all matches to track what we found
+            const matches = Array.from(text.matchAll(pattern));
+            if (matches.length > 0) {
+                for (const match of matches) {
+                    const matchArray = match as RegExpMatchArray;
+                    if (matchArray[0]) {
+                        foundPatterns.push({
+                            pattern: pattern.toString(),
+                            match: matchArray[0]
+                        });
+                    }
+                }
+                
+                // Apply replacement using the regex pattern directly
+                // This ensures capture groups like $1 work correctly
+                if (typeof replacement === 'string') {
+                    recommendedText = recommendedText.replace(pattern, replacement);
+                } else if (typeof replacement === 'function') {
+                    recommendedText = recommendedText.replace(pattern, replacement);
+                }
+            }
+        }
+        
+        // Clean up extra spaces that might result from replacements
+        recommendedText = recommendedText.replace(/\s+/g, ' ').trim();
+        
+        // Only create a result if we found patterns and the text changed
+        if (foundPatterns.length > 0 && recommendedText !== text) {
+            const matchedPhrases = foundPatterns.map(p => p.match).filter((v, i, a) => a.indexOf(v) === i);
+            console.log(`  Found bad words in Observations block ${i}: ${matchedPhrases.join(', ')}`);
+            
+            results.push({
+                id: `badphrase-${i}-${Date.now()}`,
+                category: "Content",
+                severity: "medium",
+                page: block.pageNumber || 1,
+                section: section,
+                confidence: 0.9,
+                originalText: text,
+                recommendedText: recommendedText,
+                rationale: `Weak or vague terms found: "${matchedPhrases.join('", "')}". Observations should use precise, measurable language.`
+            });
+        }
+    }
+    console.log(`Rule 3: Found ${observationsBlocks} blocks in Observations section, checked ${badWordChecks} blocks`);
+    console.log(`\n=== Total Quality Check Results: ${results.length} issues found ===`);
 
     return results;
 }
 
 function getSectionName(semanticBlocks: any[], currentIndex: number): string {
-    // Find the most recent heading before current block
+    // First, try to find an explicit HEADING or SUBHEADING
     for (let i = currentIndex - 1; i >= 0; i--) {
-        if (semanticBlocks[i].type === 'HEADING' || semanticBlocks[i].type === 'SUBHEADING') {
-            return semanticBlocks[i].text;
+        const block = semanticBlocks[i];
+        if (block.type === 'HEADING' || block.type === 'SUBHEADING') {
+            return block.text;
         }
     }
+    
+    // Fallback: Look for paragraphs that look like headings
+    // This handles cases where headings are misclassified as paragraphs
+    for (let i = currentIndex - 1; i >= 0; i--) {
+        const block = semanticBlocks[i];
+        if (block.type === 'PARAGRAPH') {
+            const text = block.text?.trim() || '';
+            
+            // Check if this looks like a heading:
+            // 1. Numbered section header (e.g., "1. Executive Summary")
+            // 2. Short text (likely a heading)
+            // 3. Title case or all caps
+            // 4. No ending punctuation
+            const isNumberedHeader = /^\d+\.\s+[A-Z]/.test(text);
+            const isShort = text.length < 80 && text.length > 0;
+            const isAllCaps = text === text.toUpperCase() && text.length < 80;
+            const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(text);
+            const noEndingPunctuation = !/[.!?]$/.test(text);
+            
+            // Check if it's an observation-style heading
+            const isObservationHeading = /^Observation\s+\d+:\s+[A-Z]/.test(text);
+            
+            // If it matches heading characteristics, treat it as a heading
+            if ((isNumberedHeader || isObservationHeading || (isShort && (isAllCaps || isTitleCase) && noEndingPunctuation)) && 
+                text.length > 3) {
+                return text;
+            }
+        }
+    }
+    
     return 'Introduction';
 }
 
