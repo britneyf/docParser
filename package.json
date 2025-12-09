@@ -1,0 +1,30 @@
+{
+  "name": "doc-parser",
+  "version": "1.0.0",
+  "description": "Modern DOCX parser with semantic classification",
+  "main": "dist/parser/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "ts-node test.ts",
+    "export": "ts-node export-classifications.ts",
+    "preview": "ts-node generate-visual-preview.ts",
+    "llm-prompts": "ts-node test-llm-classifier.ts",
+    "process-llm": "ts-node process-llm-responses.ts",
+    "start": "node dist/test.js"
+  },
+  "keywords": ["docx", "parser", "document"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "fast-xml-parser": "^4.3.2",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^3.11.174"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}
+
