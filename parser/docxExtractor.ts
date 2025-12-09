@@ -45,23 +45,48 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
     const runs: DocxRun[] = [];
     const rawRuns = pNode["w:r"] ? [].concat(pNode["w:r"]) : [];
     
-    for (const r of rawRuns) {
-      // Check for line breaks (w:br)
+    for (let runIndex = 0; runIndex < rawRuns.length; runIndex++) {
+      const r = rawRuns[runIndex];
+      
+      // Check for line breaks (w:br) - this can be a separate run or within a run
       let hasLineBreak = false;
-      if (r["w:br"] !== undefined && r["w:br"] !== null) {
+      let isLineBreakOnly = false;
+      
+      // Check if this run is ONLY a line break (no text)
+      if (r["w:br"] !== undefined && r["w:br"] !== null && !r["w:t"]) {
+        isLineBreakOnly = true;
         const br = Array.isArray(r["w:br"]) ? r["w:br"] : [r["w:br"]];
         for (const breakNode of br) {
-          // If breakNode is a string (empty or not), it's a line break
+          if (typeof breakNode === "string" || (breakNode && !breakNode["@_w:type"])) {
+            hasLineBreak = true;
+            isLineBreakOnly = true;
+          } else {
+            const breakType = breakNode["@_w:type"] || breakNode["@w:type"];
+            if (breakType !== "page") {
+              hasLineBreak = true;
+              isLineBreakOnly = true;
+            }
+          }
+        }
+      } else if (r["w:br"] !== undefined && r["w:br"] !== null) {
+        // Line break within a run that also has text
+        const br = Array.isArray(r["w:br"]) ? r["w:br"] : [r["w:br"]];
+        for (const breakNode of br) {
           if (typeof breakNode === "string") {
             hasLineBreak = true;
           } else {
             const breakType = breakNode["@_w:type"] || breakNode["@w:type"];
-            // Only care about line breaks, not page breaks
             if (breakType !== "page") {
               hasLineBreak = true;
             }
           }
         }
+      }
+      
+      // If this run is only a line break, add it and continue
+      if (isLineBreakOnly) {
+        runs.push({ text: "\n", isBold: false, isItalic: false, fontSize: undefined });
+        continue;
       }
       
       const tNode: any = r["w:t"];
@@ -107,8 +132,8 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
         if (hasLineBreak && !text.endsWith("\n")) {
           runs.push({ text: "\n", isBold: false, isItalic: false, fontSize: undefined });
         }
-      } else if (hasLineBreak) {
-        // Run with only a line break, no text
+      } else if (hasLineBreak && !isLineBreakOnly) {
+        // Run with only a line break, no text (but we already handled isLineBreakOnly above)
         runs.push({ text: "\n", isBold: false, isItalic: false, fontSize: undefined });
       }
     }
@@ -167,26 +192,30 @@ export async function extractDocxStructure(buffer: Buffer): Promise<DocxBlock[]>
           cellParas = Array.isArray(tc["w:p"]) ? tc["w:p"] : [tc["w:p"]];
         }
         
-        // Each cell can have multiple paragraphs - combine them into one cell
+        // Each cell can have multiple paragraphs - preserve them with newlines
         if (cellParas.length > 0) {
-          // Extract all paragraphs and combine their text
+          // Extract all paragraphs and preserve newlines between them
           const allRuns: DocxRun[] = [];
           let combinedText = "";
           
-          for (const p of cellParas) {
-            const para = extractParagraph(p);
+          for (let i = 0; i < cellParas.length; i++) {
+            const para = extractParagraph(cellParas[i]);
             allRuns.push(...para.runs);
             if (para.text) {
-              if (combinedText) combinedText += " ";
+              if (combinedText) combinedText += "\n"; // Use newline, not space
               combinedText += para.text;
+            }
+            // Add newline run between paragraphs (except after last)
+            if (i < cellParas.length - 1 && para.text) {
+              allRuns.push({ text: "\n", isBold: false, isItalic: false, fontSize: undefined });
             }
           }
           
-          // Create a single cell with combined content
+          // Create a single cell with combined content (preserving newlines)
           parsedCells.push({
             type: "paragraph",
             runs: allRuns,
-            text: combinedText.trim(),
+            text: combinedText, // Don't trim - preserve newlines
             isInTable: true
           });
         } else {

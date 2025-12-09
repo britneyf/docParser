@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Document Parser Preview</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      border-bottom: 3px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .block {
+      margin: 10px 0;
+      padding: 10px;
+      border-left: 4px solid #ddd;
+      background: #fafafa;
+      transition: all 0.2s;
+    }
+    .block:hover {
+      background: #f0f0f0;
+      border-left-color: #4CAF50;
+    }
+    .page-break {
+      border-top: 3px dashed #ff6b6b;
+      margin: 30px 0;
+      padding: 10px;
+      background: #fff3cd;
+      text-align: center;
+      font-weight: bold;
+      color: #856404;
+    }
+    .heading {
+      border-left-color: #2196F3;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    .heading.level-1 {
+      border-left-color: #2196F3;
+      font-size: 1.3em;
+    }
+    .heading.level-2 {
+      border-left-color: #03A9F4;
+      font-size: 1.15em;
+    }
+    .list-item {
+      border-left-color: #9C27B0;
+      padding-left: 20px;
+    }
+    .paragraph {
+      border-left-color: #757575;
+    }
+    .table {
+      border-left-color: #FF9800;
+      background: #fff8e1;
+    }
+    .table-text {
+      border-left-color: #FF6F00;
+      background: #fff3e0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+    .metadata {
+      font-size: 0.85em;
+      color: #666;
+      margin-top: 5px;
+      padding: 5px;
+      background: white;
+      border-radius: 3px;
+    }
+    .metadata span {
+      display: inline-block;
+      margin-right: 15px;
+      padding: 2px 8px;
+      background: #e3f2fd;
+      border-radius: 3px;
+    }
+    .page-number {
+      background: #ffebee !important;
+      color: #c62828;
+      font-weight: bold;
+    }
+    .line-number {
+      background: #e8f5e9 !important;
+      color: #2e7d32;
+    }
+    .summary {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .summary h2 {
+      margin-top: 0;
+      color: #1976d2;
+    }
+    .summary-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .stat {
+      background: white;
+      padding: 10px;
+      border-radius: 3px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #1976d2;
+    }
+    .stat-label {
+      font-size: 0.9em;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📄 Document Parser Preview</h1>
+    
+    <div class="summary">
+      <h2>Summary</h2>
+      <div class="summary-stats">
+        <div class="stat">
+          <div class="stat-value">85</div>
+          <div class="stat-label">Total Blocks</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">69</div>
+          <div class="stat-label">Semantic Blocks</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">11</div>
+          <div class="stat-label">Headings</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">6</div>
+          <div class="stat-label">Total Pages</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        1. [HEADING] INTERNAL AUDIT REPORT
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 1</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        2. [PARAGRAPH] Fire Hazard & Life Safety Controls – Branch Audit
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 1</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        3. [PARAGRAPH] ABC Bank
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 1</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        4. [HEADING] Table of Contents
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        5. [LIST_ITEM] 1. Executive Summary
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        6. [LIST_ITEM] 2. Audit Objectives
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        7. [LIST_ITEM] 3. Scope of Audit
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        8. [LIST_ITEM] 4. Methodology
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        9. [LIST_ITEM] 5. Rating Matrix
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        10. [LIST_ITEM] 6. Detailed Observations
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        11. [LIST_ITEM] 7. Management Action Plan
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        12. [LIST_ITEM] 8. Conclusion
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        13. [LIST_ITEM] 9. Approvals
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 2</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        14. [HEADING] 1. Executive Summary
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        15. [PARAGRAPH] The Internal Audit function conducted a Fire Hazard & Life Safety review of ABC Bank – XYZ Branch. Ten observations were identified, including significant risks in fire equipment readiness, evacuation...
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        16. [HEADING] 2. Audit Objectives
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        17. [LIST_ITEM] - Assess fire safety control effectiveness
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        18. [LIST_ITEM] - Verify compliance with regulatory and internal safety requirements
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        19. [LIST_ITEM] - Evaluate emergency response preparedness
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        20. [LIST_ITEM] - Review documentation, housekeeping, and training practices
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        21. [HEADING] 3. Scope of Audit
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        22. [LIST_ITEM] Reviewed period: Jan 2025 – Oct 2025
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        23. [LIST_ITEM] On-site review: Nov 22–23, 2025
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        24. [LIST_ITEM] Areas covered: fire extinguishers, alarms, detectors, electrical safety, server room, evacuation paths, training logs.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        25. [HEADING] 4. Methodology
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        26. [LIST_ITEM] • Walkthroughs • Evidence sampling • Staff interviews • Documentation review • Regulatory alignment checks
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        27. [HEADING] 5. Rating Matrix
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        28. [LIST_ITEM] High – Severe risk, immediate remediation required
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        29. [LIST_ITEM] Medium – Moderate risk, remediation required
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        30. [LIST_ITEM] Low – Minor deviation, improvement recommended
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        31. [HEADING] 6. Detailed Audit Observations
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        32. [SUBHEADING] Observation 1: Fire Extinguishers Not Serviced or Expired
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        33. [LIST_ITEM] Risk Rating: High
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        34. [PARAGRAPH] 6 of 14 extinguishers expired; low pressure detected; vendor contract lapsed.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        35. [SUBHEADING] Observation 2: Emergency Exits Blocked
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        36. [LIST_ITEM] Risk Rating: High
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        37. [PARAGRAPH] Exit path obstructed with cartons; no signage displayed.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        38. [SUBHEADING] Observation 3: Smoke Detectors Non-functional in Server Room
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        39. [LIST_ITEM] Risk Rating: High
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 3</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        40. [PARAGRAPH] Two detectors failed test; Fire Panel showed fault but not escalated.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        41. [SUBHEADING] Observation 4: No Evacuation Drill in Last 12 Months
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        42. [LIST_ITEM] Risk Rating: High
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        43. [PARAGRAPH] Last drill in July 2024; regulation mandates biannual drills.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        44. [SUBHEADING] Observation 5: Exposed Electrical Wiring
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        45. [LIST_ITEM] Risk Rating: Medium
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        46. [PARAGRAPH] Live wiring exposed under Teller Counter 3; conduit damaged.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        47. [SUBHEADING] Observation 6: Fire Alarm Panel Missing Zone Labels
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        48. [LIST_ITEM] Risk Rating: Medium
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        49. [PARAGRAPH] Zones unlabeled, delaying fire source identification.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        50. [SUBHEADING] Observation 7: Insufficient Fire Safety Signage
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        51. [LIST_ITEM] Risk Rating: Medium
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        52. [PARAGRAPH] Missing assembly point and exit direction signs.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        53. [SUBHEADING] Observation 8: Combustible Items Near Electrical Panels
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        54. [LIST_ITEM] Risk Rating: Medium
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        55. [PARAGRAPH] Paper and cleaning stock stored near DB board.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        56. [SUBHEADING] Observation 9: Staff Fire Training Incomplete
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        57. [LIST_ITEM] Risk Rating: Low
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        58. [PARAGRAPH] Only 2 of 18 employees trained in extinguisher usage.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-2">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        59. [SUBHEADING] Observation 10: FM200 Logs Missing
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 2</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        60. [LIST_ITEM] Risk Rating: Low
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        61. [PARAGRAPH] 3 months of fire suppression logs missing; vendor not documenting.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        62. [HEADING] 7. Management Action Plan Summary
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block table">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        63. [TABLE] [Table with 11 rows, 44 cells]
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 4</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        64. [HEADING] 8. Conclusion
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 5</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block paragraph">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        65. [PARAGRAPH] The branch has significant fire hazard risks requiring urgent remediation. A follow-up audit is recommended within 90 days.
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 5</span>
+        
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block heading level-1">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        66. [HEADING] 9. Approvals
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 6</span>
+        <span>Level 1</span>
+        
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        67. [LIST_ITEM] Prepared By: Internal Audit – Safety & Compliance Division
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 6</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        68. [LIST_ITEM] Reviewed By: Chief Internal Auditor
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 6</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+    <div class="block list-item">
+      <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+        69. [LIST_ITEM] Approved By: Head of Internal Audit
+      </div>
+      <div class="metadata">
+        <span class="page-number">Page 6</span>
+        
+        <span>List Level 0</span>
+        
+        
+        
+      </div>
+    </div>
+  </div>
+</body>
+</html>
